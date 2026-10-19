@@ -600,7 +600,11 @@ func (l *customTypedGraphLoader) readArtifact(path string, meta *packageMeta, is
 			return nil, false
 		}
 	}
-	if isLocal {
+	// Load imports before decoding so the decoder reuses their final
+	// packages. Otherwise it creates stubs, and a dependency type-checked
+	// from source afterwards gets a second *types.Package for the same path,
+	// making identical types compare unequal.
+	{
 		preloadStart := time.Now()
 		for _, imp := range meta.Imports {
 			target := imp
