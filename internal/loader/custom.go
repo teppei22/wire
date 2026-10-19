@@ -457,7 +457,10 @@ func (l *customTypedGraphLoader) loadPackage(path string) (*packages.Package, er
 		pkg = packageStub(l.fset, meta)
 		l.packages[path] = pkg
 	}
-	artifactPolicy := l.artifactPolicy(meta, isTarget, isLocal)
+	// Provider sets are only recoverable from syntax, so any package that
+	// imports wire keeps full state even when it comes from the module cache.
+	declaresWire := importsWire(meta)
+	artifactPolicy := l.artifactPolicy(meta, isTarget, isLocal || declaresWire)
 	if artifactPolicy.read {
 		if typed, ok := l.readArtifact(path, meta, isLocal); ok {
 			linkStart := time.Now()
@@ -483,7 +486,7 @@ func (l *customTypedGraphLoader) loadPackage(path string) (*packages.Package, er
 		tpkg = types.NewPackage(meta.ImportPath, meta.Name)
 		l.typesPkgs[path] = tpkg
 	}
-	needFullState := isTarget || isLocal
+	needFullState := isTarget || isLocal || declaresWire
 	var info *types.Info
 	if needFullState {
 		info = newTypesInfo()
@@ -1075,6 +1078,21 @@ func isWorkspacePackage(workspaceRoot, dir string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// importsWire reports whether a package imports a Wire API package and may
+// therefore declare provider sets.
+func importsWire(meta *packageMeta) bool {
+	if meta == nil {
+		return false
+	}
+	for _, imp := range meta.Imports {
+		switch imp {
+		case "github.com/goforj/wire", "github.com/google/wire":
+			return true
+		}
+	}
+	return false
 }
 
 func isLocalSourcePackage(workspaceRoot string, meta *packageMeta) bool {
